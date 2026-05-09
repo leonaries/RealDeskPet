@@ -154,7 +154,7 @@ function App() {
     hideMenuTimer.current = window.setTimeout(() => {
       setIsMenuVisible(false);
       hideMenuTimer.current = null;
-    }, 3000);
+    }, 1000);
   };
 
   return (
