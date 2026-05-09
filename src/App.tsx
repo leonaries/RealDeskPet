@@ -1,5 +1,5 @@
 import { Bed, Cat, Footprints, Home, MessageCircle, Pause } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 type PetMood = "idle" | "walking" | "sitting" | "lying" | "meowing";
@@ -53,6 +53,11 @@ function App() {
 
   const spriteState = mood === "walking" && facing === "right" ? "running-right" : moodToSprite[mood];
   const currentSprite = spriteMeta[spriteState];
+  const applyRoamState = (state: { isRoaming: boolean; direction: "left" | "right" }) => {
+    setIsRoaming(state.isRoaming);
+    setFacing(state.direction);
+    setMood(state.isRoaming ? "walking" : "idle");
+  };
 
   useEffect(() => {
     if (mood !== "meowing") {
@@ -63,11 +68,7 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [mood]);
 
-  useEffect(() => window.deskPet?.onRoamState((state) => {
-    setIsRoaming(state.isRoaming);
-    setFacing(state.direction);
-    setMood(state.isRoaming ? "walking" : "idle");
-  }), []);
+  useEffect(() => window.deskPet?.onRoamState(applyRoamState), []);
 
   useEffect(() => {
     setFrame(0);
@@ -92,29 +93,42 @@ function App() {
   }, [mood]);
 
   const goHome = async () => {
-    await window.deskPet?.home();
-    setIsRoaming(false);
-    setMood("idle");
+    const state = await window.deskPet?.home();
+    applyRoamState(state ?? { isRoaming: false, direction: facing });
   };
 
   const handleAction = async (nextMood: PetMood) => {
     if (nextMood === "walking") {
+      console.debug("[desk-pet] walk button clicked", { isRoaming });
       if (isRoaming) {
-        await window.deskPet?.stopRoaming();
-        setIsRoaming(false);
-        setMood("idle");
+        const state = await window.deskPet?.stopRoaming();
+        applyRoamState(state ?? { isRoaming: false, direction: facing });
         return;
       }
 
-      await window.deskPet?.startRoaming();
-      setIsRoaming(true);
-      setMood("walking");
+      const state = await window.deskPet?.startRoaming();
+      applyRoamState(state ?? { isRoaming: false, direction: facing });
       return;
     }
 
-    await window.deskPet?.stopRoaming();
-    setIsRoaming(false);
+    const state = await window.deskPet?.stopRoaming();
+    setIsRoaming(state?.isRoaming ?? false);
+    if (state?.direction) {
+      setFacing(state.direction);
+    }
     setMood(nextMood);
+  };
+
+  const handleActionPointer = (event: PointerEvent<HTMLButtonElement>, nextMood: PetMood) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void handleAction(nextMood);
+  };
+
+  const handleHomePointer = (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void goHome();
   };
 
   return (
@@ -145,13 +159,13 @@ function App() {
               type="button"
               title={action.label}
               aria-label={action.label}
-              onClick={() => handleAction(action.mood)}
+              onPointerDown={(event) => handleActionPointer(event, action.mood)}
             >
               <Icon size={18} strokeWidth={2.4} />
             </button>
           );
         })}
-        <button type="button" title="Home" aria-label="Home" onClick={goHome}>
+        <button type="button" title="Home" aria-label="Home" onPointerDown={handleHomePointer}>
           <Home size={18} strokeWidth={2.4} />
         </button>
       </nav>

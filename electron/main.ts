@@ -20,8 +20,11 @@ const windowSize = {
 const roam = {
   speed: 4,
   intervalMs: 32,
-  margin: 8
+  margin: 8,
+  debugEverySteps: 45
 };
+
+let roamStepCount = 0;
 
 function getHomeBounds() {
   const display = screen.getPrimaryDisplay();
@@ -45,60 +48,61 @@ function sendRoamState(isRoaming: boolean) {
 function stopRoaming() {
   if (!roamTimer) {
     sendRoamState(false);
-    return;
+    return { isRoaming: false, direction: roamDirection };
   }
 
   clearInterval(roamTimer);
   roamTimer = null;
   sendRoamState(false);
+  return { isRoaming: false, direction: roamDirection };
 }
 
-function getCurrentWorkArea() {
+function stepRoam() {
   if (!mainWindow) {
-    return screen.getPrimaryDisplay().workArea;
+    return { isRoaming: false, direction: roamDirection };
   }
 
-  const [x, y] = mainWindow.getPosition();
-  return screen.getDisplayNearestPoint({ x, y }).workArea;
+  const area = screen.getPrimaryDisplay().workArea;
+  const bounds = mainWindow.getBounds();
+  let nextX = bounds.x + (roamDirection === "right" ? roam.speed : -roam.speed);
+  const minX = area.x + roam.margin;
+  const maxX = area.x + area.width - bounds.width - roam.margin;
+
+  if (nextX <= minX) {
+    nextX = minX;
+    roamDirection = "right";
+    sendRoamState(true);
+  }
+
+  if (nextX >= maxX) {
+    nextX = maxX;
+    roamDirection = "left";
+    sendRoamState(true);
+  }
+
+  mainWindow.setBounds({ ...bounds, x: Math.round(nextX) }, false);
+  roamStepCount += 1;
+  if (process.env.VITE_DEV_SERVER_URL && roamStepCount % roam.debugEverySteps === 1) {
+    console.log(`[desk-pet] roaming ${bounds.x},${bounds.y} -> ${Math.round(nextX)},${bounds.y}`);
+  }
+  return { isRoaming: true, direction: roamDirection };
 }
 
 function startRoaming() {
   if (!mainWindow) {
-    return;
+    return { isRoaming: false, direction: roamDirection };
   }
 
   if (roamTimer) {
-    stopRoaming();
-    return;
+    return { isRoaming: true, direction: roamDirection };
   }
 
+  stepRoam();
   sendRoamState(true);
   roamTimer = setInterval(() => {
-    if (!mainWindow) {
-      stopRoaming();
-      return;
-    }
-
-    const area = getCurrentWorkArea();
-    const bounds = mainWindow.getBounds();
-    let nextX = bounds.x + (roamDirection === "right" ? roam.speed : -roam.speed);
-    const minX = area.x + roam.margin;
-    const maxX = area.x + area.width - bounds.width - roam.margin;
-
-    if (nextX <= minX) {
-      nextX = minX;
-      roamDirection = "right";
-      sendRoamState(true);
-    }
-
-    if (nextX >= maxX) {
-      nextX = maxX;
-      roamDirection = "left";
-      sendRoamState(true);
-    }
-
-    mainWindow.setPosition(Math.round(nextX), bounds.y, false);
+    stepRoam();
   }, roam.intervalMs);
+  return { isRoaming: true, direction: roamDirection };
 }
 
 async function createWindow() {
@@ -115,7 +119,7 @@ async function createWindow() {
     backgroundColor: "#00000000",
     trafficLightPosition: { x: -100, y: -100 },
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -125,6 +129,18 @@ async function createWindow() {
     visibleOnFullScreen: true
   });
   mainWindow.setAlwaysOnTop(true, "floating");
+
+  if (process.env.VITE_DEV_SERVER_URL) {
+    mainWindow.webContents.on("console-message", (_event, _level, message) => {
+      console.log(`[renderer] ${message}`);
+    });
+    mainWindow.webContents.once("did-finish-load", async () => {
+      const hasDeskPet = await mainWindow?.webContents.executeJavaScript(
+        "Boolean(window.deskPet && window.deskPet.startRoaming)"
+      );
+      console.log(`[desk-pet] preload bridge ready: ${hasDeskPet}`);
+    });
+  }
 
   if (process.env.VITE_DEV_SERVER_URL) {
     await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -153,14 +169,21 @@ app.on("window-all-closed", () => {
 ipcMain.handle("pet:home", () => {
   stopRoaming();
   mainWindow?.setBounds(getHomeBounds(), true);
+  return { isRoaming: false, direction: roamDirection };
 });
 
 ipcMain.handle("pet:start-roaming", () => {
-  startRoaming();
+  if (process.env.VITE_DEV_SERVER_URL) {
+    console.log("[desk-pet] start-roaming requested");
+  }
+  return startRoaming();
 });
 
 ipcMain.handle("pet:stop-roaming", () => {
-  stopRoaming();
+  if (process.env.VITE_DEV_SERVER_URL) {
+    console.log("[desk-pet] stop-roaming requested");
+  }
+  return stopRoaming();
 });
 
 ipcMain.handle("pet:toggle-ignore-mouse", (_event, ignore: boolean) => {
