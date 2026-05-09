@@ -1,6 +1,9 @@
 node_modules/
+.venv/
 dist/
 dist-electron/
+runs/
+output/imagegen/
 
 .DS_Store
 *.log

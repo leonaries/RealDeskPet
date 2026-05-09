@@ -3,6 +3,36 @@ import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 type PetMood = "idle" | "walking" | "sitting" | "lying" | "meowing";
+type SpriteState =
+  | "idle"
+  | "running-right"
+  | "running-left"
+  | "waving"
+  | "jumping"
+  | "failed"
+  | "waiting"
+  | "running"
+  | "review";
+
+const spriteMeta: Record<SpriteState, { row: number; frames: number; fps: number }> = {
+  idle: { row: 0, frames: 6, fps: 4 },
+  "running-right": { row: 1, frames: 8, fps: 10 },
+  "running-left": { row: 2, frames: 8, fps: 10 },
+  waving: { row: 3, frames: 4, fps: 6 },
+  jumping: { row: 4, frames: 5, fps: 8 },
+  failed: { row: 5, frames: 8, fps: 8 },
+  waiting: { row: 6, frames: 6, fps: 5 },
+  running: { row: 7, frames: 6, fps: 6 },
+  review: { row: 8, frames: 6, fps: 5 }
+};
+
+const moodToSprite: Record<PetMood, SpriteState> = {
+  idle: "idle",
+  walking: "running-left",
+  sitting: "waiting",
+  lying: "review",
+  meowing: "waving"
+};
 
 const actions: Array<{
   mood: PetMood;
@@ -18,6 +48,10 @@ const actions: Array<{
 function App() {
   const [mood, setMood] = useState<PetMood>("idle");
   const [facing, setFacing] = useState<"left" | "right">("left");
+  const [frame, setFrame] = useState(0);
+
+  const spriteState = mood === "walking" && facing === "right" ? "running-right" : moodToSprite[mood];
+  const currentSprite = spriteMeta[spriteState];
 
   useEffect(() => {
     if (mood !== "meowing") {
@@ -40,6 +74,18 @@ function App() {
     return () => window.clearInterval(timer);
   }, [mood]);
 
+  useEffect(() => {
+    setFrame(0);
+  }, [spriteState]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setFrame((current) => (current + 1) % currentSprite.frames);
+    }, 1000 / currentSprite.fps);
+
+    return () => window.clearInterval(timer);
+  }, [currentSprite.fps, currentSprite.frames]);
+
   const speech = useMemo(() => {
     if (mood === "meowing") {
       return "miao";
@@ -60,21 +106,16 @@ function App() {
       <section className="pet-zone" aria-label="Desk cat">
         {speech && <div className="bubble">{speech}</div>}
         <button
-          className={`cat-body is-${mood} faces-${facing}`}
+          className={`cat-sprite is-${mood}`}
           aria-label="Drag Desk Cat"
           title="Drag Desk Cat"
           onDoubleClick={() => setMood("meowing")}
+          style={{
+            "--sprite-row": currentSprite.row,
+            "--sprite-frame": frame
+          } as React.CSSProperties}
         >
-          <span className="ear ear-left" />
-          <span className="ear ear-right" />
-          <span className="face">
-            <span className="eye eye-left" />
-            <span className="eye eye-right" />
-            <span className="muzzle" />
-          </span>
-          <span className="tail" />
-          <span className="paw paw-left" />
-          <span className="paw paw-right" />
+          <span className="sr-only">Dudu</span>
         </button>
       </section>
 
