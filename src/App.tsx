@@ -29,8 +29,8 @@ const spriteMeta: Record<SpriteState, { row: number; frames: number; fps: number
 const moodToSprite: Record<PetMood, SpriteState> = {
   idle: "idle",
   walking: "running-left",
-  sitting: "waiting",
-  lying: "review",
+  sitting: "idle",
+  lying: "waiting",
   meowing: "waving"
 };
 
