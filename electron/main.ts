@@ -9,10 +9,18 @@ const { app, BrowserWindow, ipcMain, screen } =
   require("electron") as typeof electron;
 
 let mainWindow: electron.BrowserWindow | null = null;
+let roamTimer: NodeJS.Timeout | null = null;
+let roamDirection: "left" | "right" = "left";
 
 const windowSize = {
   width: 360,
   height: 340
+};
+
+const roam = {
+  speed: 4,
+  intervalMs: 32,
+  margin: 8
 };
 
 function getHomeBounds() {
@@ -25,6 +33,72 @@ function getHomeBounds() {
     width: windowSize.width,
     height: windowSize.height
   };
+}
+
+function sendRoamState(isRoaming: boolean) {
+  mainWindow?.webContents.send("pet:roam-state", {
+    isRoaming,
+    direction: roamDirection
+  });
+}
+
+function stopRoaming() {
+  if (!roamTimer) {
+    sendRoamState(false);
+    return;
+  }
+
+  clearInterval(roamTimer);
+  roamTimer = null;
+  sendRoamState(false);
+}
+
+function getCurrentWorkArea() {
+  if (!mainWindow) {
+    return screen.getPrimaryDisplay().workArea;
+  }
+
+  const [x, y] = mainWindow.getPosition();
+  return screen.getDisplayNearestPoint({ x, y }).workArea;
+}
+
+function startRoaming() {
+  if (!mainWindow) {
+    return;
+  }
+
+  if (roamTimer) {
+    stopRoaming();
+    return;
+  }
+
+  sendRoamState(true);
+  roamTimer = setInterval(() => {
+    if (!mainWindow) {
+      stopRoaming();
+      return;
+    }
+
+    const area = getCurrentWorkArea();
+    const bounds = mainWindow.getBounds();
+    let nextX = bounds.x + (roamDirection === "right" ? roam.speed : -roam.speed);
+    const minX = area.x + roam.margin;
+    const maxX = area.x + area.width - bounds.width - roam.margin;
+
+    if (nextX <= minX) {
+      nextX = minX;
+      roamDirection = "right";
+      sendRoamState(true);
+    }
+
+    if (nextX >= maxX) {
+      nextX = maxX;
+      roamDirection = "left";
+      sendRoamState(true);
+    }
+
+    mainWindow.setPosition(Math.round(nextX), bounds.y, false);
+  }, roam.intervalMs);
 }
 
 async function createWindow() {
@@ -77,7 +151,16 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("pet:home", () => {
+  stopRoaming();
   mainWindow?.setBounds(getHomeBounds(), true);
+});
+
+ipcMain.handle("pet:start-roaming", () => {
+  startRoaming();
+});
+
+ipcMain.handle("pet:stop-roaming", () => {
+  stopRoaming();
 });
 
 ipcMain.handle("pet:toggle-ignore-mouse", (_event, ignore: boolean) => {

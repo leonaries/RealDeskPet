@@ -49,6 +49,7 @@ function App() {
   const [mood, setMood] = useState<PetMood>("idle");
   const [facing, setFacing] = useState<"left" | "right">("left");
   const [frame, setFrame] = useState(0);
+  const [isRoaming, setIsRoaming] = useState(false);
 
   const spriteState = mood === "walking" && facing === "right" ? "running-right" : moodToSprite[mood];
   const currentSprite = spriteMeta[spriteState];
@@ -62,17 +63,11 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [mood]);
 
-  useEffect(() => {
-    if (mood !== "walking") {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setFacing((current) => (current === "left" ? "right" : "left"));
-    }, 2200);
-
-    return () => window.clearInterval(timer);
-  }, [mood]);
+  useEffect(() => window.deskPet?.onRoamState((state) => {
+    setIsRoaming(state.isRoaming);
+    setFacing(state.direction);
+    setMood(state.isRoaming ? "walking" : "idle");
+  }), []);
 
   useEffect(() => {
     setFrame(0);
@@ -98,7 +93,28 @@ function App() {
 
   const goHome = async () => {
     await window.deskPet?.home();
+    setIsRoaming(false);
     setMood("idle");
+  };
+
+  const handleAction = async (nextMood: PetMood) => {
+    if (nextMood === "walking") {
+      if (isRoaming) {
+        await window.deskPet?.stopRoaming();
+        setIsRoaming(false);
+        setMood("idle");
+        return;
+      }
+
+      await window.deskPet?.startRoaming();
+      setIsRoaming(true);
+      setMood("walking");
+      return;
+    }
+
+    await window.deskPet?.stopRoaming();
+    setIsRoaming(false);
+    setMood(nextMood);
   };
 
   return (
@@ -129,7 +145,7 @@ function App() {
               type="button"
               title={action.label}
               aria-label={action.label}
-              onClick={() => setMood(action.mood)}
+              onClick={() => handleAction(action.mood)}
             >
               <Icon size={18} strokeWidth={2.4} />
             </button>
