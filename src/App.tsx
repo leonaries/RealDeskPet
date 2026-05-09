@@ -1,5 +1,5 @@
 import { Bed, Cat, Footprints, Home, MessageCircle, Pause } from "lucide-react";
-import { type PointerEvent, useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 type PetMood = "idle" | "walking" | "sitting" | "lying" | "meowing";
@@ -50,6 +50,8 @@ function App() {
   const [facing, setFacing] = useState<"left" | "right">("left");
   const [frame, setFrame] = useState(0);
   const [isRoaming, setIsRoaming] = useState(false);
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const hideMenuTimer = useRef<number | null>(null);
 
   const spriteState = mood === "walking" && facing === "right" ? "running-right" : moodToSprite[mood];
   const currentSprite = spriteMeta[spriteState];
@@ -81,6 +83,12 @@ function App() {
 
     return () => window.clearInterval(timer);
   }, [currentSprite.fps, currentSprite.frames]);
+
+  useEffect(() => () => {
+    if (hideMenuTimer.current) {
+      window.clearTimeout(hideMenuTimer.current);
+    }
+  }, []);
 
   const speech = useMemo(() => {
     if (mood === "meowing") {
@@ -131,8 +139,26 @@ function App() {
     void goHome();
   };
 
+  const showMenu = () => {
+    if (hideMenuTimer.current) {
+      window.clearTimeout(hideMenuTimer.current);
+      hideMenuTimer.current = null;
+    }
+    setIsMenuVisible(true);
+  };
+
+  const scheduleHideMenu = () => {
+    if (hideMenuTimer.current) {
+      window.clearTimeout(hideMenuTimer.current);
+    }
+    hideMenuTimer.current = window.setTimeout(() => {
+      setIsMenuVisible(false);
+      hideMenuTimer.current = null;
+    }, 3000);
+  };
+
   return (
-    <main className="stage">
+    <main className="stage" onPointerEnter={showMenu} onPointerLeave={scheduleHideMenu}>
       <section className="pet-zone" aria-label="Desk cat">
         {speech && <div className="bubble">{speech}</div>}
         <button
@@ -149,7 +175,7 @@ function App() {
         </button>
       </section>
 
-      <nav className="toolbar" aria-label="Pet actions">
+      <nav className={`toolbar ${isMenuVisible ? "is-visible" : ""}`} aria-label="Pet actions">
         {actions.map((action) => {
           const Icon = action.icon;
           return (

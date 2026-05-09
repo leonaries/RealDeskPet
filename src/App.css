@@ -101,14 +101,24 @@
     0 12px 30px rgba(37, 28, 19, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(18px) saturate(1.2);
-  transform: translateX(-50%);
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px) scale(0.96);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
   -webkit-app-region: no-drag;
 }
 
 .toolbar,
 .toolbar * {
   -webkit-app-region: no-drag;
+}
+
+.toolbar.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .toolbar button {
