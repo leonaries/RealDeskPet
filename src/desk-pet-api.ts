@@ -1,4 +1,8 @@
-export type RoamState = { isRoaming: boolean; direction: "left" | "right" };
+export type RoamState = {
+  isRoaming: boolean;
+  direction: "left" | "right";
+  phase: "walking" | "resting" | "stopped";
+};
 
 export type DeskPetApi = {
   home: () => Promise<RoamState>;

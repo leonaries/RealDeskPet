@@ -1,5 +1,6 @@
 import { Bed, Cat, Footprints, Home, MessageCircle, Pause } from "lucide-react";
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { RoamState } from "./desk-pet-api";
 import "./App.css";
 
 type PetMood = "idle" | "walking" | "sitting" | "lying" | "meowing";
@@ -50,14 +51,21 @@ function App() {
   const [facing, setFacing] = useState<"left" | "right">("left");
   const [frame, setFrame] = useState(0);
   const [isRoaming, setIsRoaming] = useState(false);
+  const [roamPhase, setRoamPhase] = useState<RoamState["phase"]>("stopped");
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const hideMenuTimer = useRef<number | null>(null);
 
-  const spriteState = mood === "walking" && facing === "right" ? "running-right" : moodToSprite[mood];
+  const spriteState =
+    isRoaming && roamPhase === "resting"
+      ? "waiting"
+      : mood === "walking" && facing === "right"
+        ? "running-right"
+        : moodToSprite[mood];
   const currentSprite = spriteMeta[spriteState];
-  const applyRoamState = (state: { isRoaming: boolean; direction: "left" | "right" }) => {
+  const applyRoamState = (state: RoamState) => {
     setIsRoaming(state.isRoaming);
     setFacing(state.direction);
+    setRoamPhase(state.phase);
     setMood(state.isRoaming ? "walking" : "idle");
   };
 
@@ -94,15 +102,15 @@ function App() {
     if (mood === "meowing") {
       return "miao";
     }
-    if (mood === "walking") {
+    if (isRoaming && roamPhase === "walking") {
       return "pat pat";
     }
     return "";
-  }, [mood]);
+  }, [isRoaming, mood, roamPhase]);
 
   const goHome = async () => {
     const state = await window.deskPet?.home();
-    applyRoamState(state ?? { isRoaming: false, direction: facing });
+    applyRoamState(state ?? { isRoaming: false, direction: facing, phase: "stopped" });
   };
 
   const handleAction = async (nextMood: PetMood) => {
@@ -110,17 +118,18 @@ function App() {
       console.debug("[desk-pet] walk button clicked", { isRoaming });
       if (isRoaming) {
         const state = await window.deskPet?.stopRoaming();
-        applyRoamState(state ?? { isRoaming: false, direction: facing });
+        applyRoamState(state ?? { isRoaming: false, direction: facing, phase: "stopped" });
         return;
       }
 
       const state = await window.deskPet?.startRoaming();
-      applyRoamState(state ?? { isRoaming: false, direction: facing });
+      applyRoamState(state ?? { isRoaming: false, direction: facing, phase: "stopped" });
       return;
     }
 
     const state = await window.deskPet?.stopRoaming();
     setIsRoaming(state?.isRoaming ?? false);
+    setRoamPhase(state?.phase ?? "stopped");
     if (state?.direction) {
       setFacing(state.direction);
     }

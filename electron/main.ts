@@ -10,7 +10,9 @@ const { app, BrowserWindow, ipcMain, screen } =
 
 let mainWindow: electron.BrowserWindow | null = null;
 let roamTimer: NodeJS.Timeout | null = null;
+let roamPhaseTimer: NodeJS.Timeout | null = null;
 let roamDirection: "left" | "right" = "left";
+let roamPhase: "walking" | "resting" | "stopped" = "stopped";
 
 const windowSize = {
   width: 360,
@@ -21,7 +23,11 @@ const roam = {
   speed: 4,
   intervalMs: 32,
   margin: 8,
-  debugEverySteps: 45
+  debugEverySteps: 45,
+  minWalkMs: 9000,
+  maxWalkMs: 16000,
+  minRestMs: 3500,
+  maxRestMs: 7500
 };
 
 let roamStepCount = 0;
@@ -41,25 +47,36 @@ function getHomeBounds() {
 function sendRoamState(isRoaming: boolean) {
   mainWindow?.webContents.send("pet:roam-state", {
     isRoaming,
-    direction: roamDirection
+    direction: roamDirection,
+    phase: roamPhase
   });
 }
 
 function stopRoaming() {
+  roamPhase = "stopped";
+  if (roamPhaseTimer) {
+    clearTimeout(roamPhaseTimer);
+    roamPhaseTimer = null;
+  }
+
   if (!roamTimer) {
     sendRoamState(false);
-    return { isRoaming: false, direction: roamDirection };
+    return { isRoaming: false, direction: roamDirection, phase: roamPhase };
   }
 
   clearInterval(roamTimer);
   roamTimer = null;
   sendRoamState(false);
-  return { isRoaming: false, direction: roamDirection };
+  return { isRoaming: false, direction: roamDirection, phase: roamPhase };
 }
 
 function stepRoam() {
   if (!mainWindow) {
-    return { isRoaming: false, direction: roamDirection };
+    return { isRoaming: false, direction: roamDirection, phase: roamPhase };
+  }
+
+  if (roamPhase !== "walking") {
+    return { isRoaming: true, direction: roamDirection, phase: roamPhase };
   }
 
   const area = screen.getPrimaryDisplay().workArea;
@@ -85,24 +102,47 @@ function stepRoam() {
   if (process.env.VITE_DEV_SERVER_URL && roamStepCount % roam.debugEverySteps === 1) {
     console.log(`[desk-pet] roaming ${bounds.x},${bounds.y} -> ${Math.round(nextX)},${bounds.y}`);
   }
-  return { isRoaming: true, direction: roamDirection };
+  return { isRoaming: true, direction: roamDirection, phase: roamPhase };
+}
+
+function randomDuration(minMs: number, maxMs: number) {
+  return Math.round(minMs + Math.random() * (maxMs - minMs));
+}
+
+function scheduleRoamPhase() {
+  if (roamPhaseTimer) {
+    clearTimeout(roamPhaseTimer);
+  }
+
+  const duration =
+    roamPhase === "walking"
+      ? randomDuration(roam.minWalkMs, roam.maxWalkMs)
+      : randomDuration(roam.minRestMs, roam.maxRestMs);
+
+  roamPhaseTimer = setTimeout(() => {
+    roamPhase = roamPhase === "walking" ? "resting" : "walking";
+    sendRoamState(true);
+    scheduleRoamPhase();
+  }, duration);
 }
 
 function startRoaming() {
   if (!mainWindow) {
-    return { isRoaming: false, direction: roamDirection };
+    return { isRoaming: false, direction: roamDirection, phase: roamPhase };
   }
 
   if (roamTimer) {
-    return { isRoaming: true, direction: roamDirection };
+    return { isRoaming: true, direction: roamDirection, phase: roamPhase };
   }
 
+  roamPhase = "walking";
   stepRoam();
   sendRoamState(true);
+  scheduleRoamPhase();
   roamTimer = setInterval(() => {
     stepRoam();
   }, roam.intervalMs);
-  return { isRoaming: true, direction: roamDirection };
+  return { isRoaming: true, direction: roamDirection, phase: roamPhase };
 }
 
 async function createWindow() {
@@ -169,7 +209,7 @@ app.on("window-all-closed", () => {
 ipcMain.handle("pet:home", () => {
   stopRoaming();
   mainWindow?.setBounds(getHomeBounds(), true);
-  return { isRoaming: false, direction: roamDirection };
+  return { isRoaming: false, direction: roamDirection, phase: roamPhase };
 });
 
 ipcMain.handle("pet:start-roaming", () => {

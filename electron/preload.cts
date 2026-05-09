@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
-type RoamState = { isRoaming: boolean; direction: "left" | "right" };
+type RoamState = {
+  isRoaming: boolean;
+  direction: "left" | "right";
+  phase: "walking" | "resting" | "stopped";
+};
 
 const deskPet = {
   home: () => ipcRenderer.invoke("pet:home") as Promise<RoamState>,
